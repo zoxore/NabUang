@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/wallet_model.dart';
 import '../models/transaction_model.dart';
+import '../models/bill_model.dart';
 import '../services/firestore_service.dart';
 
 // ─── FirestoreService instance ────────────────────────────────────────────────
@@ -25,6 +26,13 @@ final transactionsProvider = StreamProvider<List<TransactionModel>>((ref) {
   final uid = ref.watch(_uidProvider);
   if (uid.isEmpty) return const Stream.empty();
   return ref.watch(firestoreServiceProvider).transactionsStream(uid);
+});
+
+// ─── Stream daftar tagihan ────────────────────────────────────────────────────
+final billsProvider = StreamProvider<List<BillModel>>((ref) {
+  final uid = ref.watch(_uidProvider);
+  if (uid.isEmpty) return const Stream.empty();
+  return ref.watch(firestoreServiceProvider).billsStream(uid);
 });
 
 // ─── Total saldo semua wallet ─────────────────────────────────────────────────

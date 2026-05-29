@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/wallet_model.dart';
 import '../models/transaction_model.dart';
+import '../models/bill_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -12,6 +13,9 @@ class FirestoreService {
 
   CollectionReference _transactions(String uid) =>
       _db.collection('users').doc(uid).collection('transactions');
+
+  CollectionReference _bills(String uid) =>
+      _db.collection('users').doc(uid).collection('bills');
 
   // ─── WALLET STREAMS ────────────────────────────────────────────────────────
 
@@ -31,6 +35,18 @@ class FirestoreService {
         .map((snap) => snap.docs
             .map((doc) => TransactionModel.fromMap(
                 doc.id, doc.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // ─── BILL STREAMS ──────────────────────────────────────────────────────────
+
+  Stream<List<BillModel>> billsStream(String uid) {
+    return _bills(uid)
+        .orderBy('jatuh_tempo', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) =>
+                BillModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
             .toList());
   }
 
@@ -143,6 +159,59 @@ class FirestoreService {
         }
         break;
     }
+
+    await batch.commit();
+  }
+
+  // ─── BILL CRUD ─────────────────────────────────────────────────────────────
+
+  Future<void> addBill(String uid, BillModel bill) async {
+    await _bills(uid).add(bill.toMap());
+  }
+
+  Future<void> updateBill(String uid, BillModel bill) async {
+    await _bills(uid).doc(bill.id).update(bill.toMap());
+  }
+
+  Future<void> deleteBill(String uid, String billId) async {
+    await _bills(uid).doc(billId).delete();
+  }
+
+  /// Tandai tagihan sebagai lunas + buat transaksi pengeluaran sekaligus
+  Future<void> payBill(
+    String uid,
+    BillModel bill,
+    WalletModel wallet,
+  ) async {
+    final batch = _db.batch();
+
+    // 1. Buat transaksi pengeluaran
+    final txRef = _transactions(uid).doc();
+    batch.set(txRef, {
+      'id_dompet': wallet.id,
+      'id_dompet_tujuan': null,
+      'id_kategori': null,
+      'tipe': 'Pengeluaran',
+      'nominal': bill.nominal,
+      'fee': 0,
+      'tanggal': DateTime.now(),
+      'catatan': 'Bayar: ${bill.nama}',
+      'nama_dompet': wallet.nama,
+      'nama_kategori': 'Tagihan',
+      'icon_kategori': '🧾',
+    });
+
+    // 2. Kurangi saldo dompet
+    batch.update(
+      _wallets(uid).doc(wallet.id),
+      {'saldo': FieldValue.increment(-bill.nominal)},
+    );
+
+    // 3. Tandai tagihan sebagai lunas
+    batch.update(_bills(uid).doc(bill.id), {
+      'sudah_dibayar': true,
+      'id_transaksi': txRef.id,
+    });
 
     await batch.commit();
   }

@@ -2,14 +2,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/transaction_model.dart';
-import '../../models/wallet_model.dart';
 import '../../core/utils/currency_formatter.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/firestore_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../wallets/wallets_screen.dart';
 import '../categories/categories_screen.dart';
+import '../bills/bills_screen.dart';
 import '../transactions/transaction_form_screen.dart';
+import '../reports/reports_screen.dart';
+import '../widgets/filter_bar.dart';
 import 'widgets/balance_card.dart';
 import 'widgets/transaction_list_item.dart';
 
@@ -26,6 +28,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final List<Widget> _screens = const [
     _HomeTab(),
     WalletsScreen(),
+    BillsScreen(),
+    ReportsScreen(),
     CategoriesScreen(),
   ];
 
@@ -56,6 +60,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ],
         ),
         child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
           currentIndex: _currentIndex,
           onTap: (i) => setState(() => _currentIndex = i),
           backgroundColor: Colors.transparent,
@@ -70,6 +75,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               icon: Icon(Icons.account_balance_wallet_outlined),
               activeIcon: Icon(Icons.account_balance_wallet_rounded),
               label: 'Dompet',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long_outlined),
+              activeIcon: Icon(Icons.receipt_long_rounded),
+              label: 'Tagihan',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.pie_chart_outline_rounded),
+              activeIcon: Icon(Icons.pie_chart_rounded),
+              label: 'Laporan',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.grid_view_outlined),
@@ -109,32 +124,66 @@ class _HomeTab extends ConsumerStatefulWidget {
 
 class _HomeTabState extends ConsumerState<_HomeTab> {
   // ─── Filter state ────────────────────────────────
-  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTimeRange? _selectedDateRange;
   String? _selectedWalletId; // null = semua dompet
   final Set<String> _pendingDeleteIds = {}; // item yg sudah di-swipe, tunggu Firestore
+
+  @override
+  void initState() {
+    super.initState();
+    // Default: awal bulan ini s.d akhir bulan ini
+    final now = DateTime.now();
+    _selectedDateRange = DateTimeRange(
+      start: DateTime(now.year, now.month, 1),
+      end: DateTime(now.year, now.month + 1, 0, 23, 59, 59),
+    );
+  }
 
   List<TransactionModel> _applyFilter(List<TransactionModel> txList) {
     return txList.where((tx) {
       if (_pendingDeleteIds.contains(tx.id)) return false; // hide immediately
-      final matchMonth = tx.tanggal.year == _selectedMonth.year &&
-          tx.tanggal.month == _selectedMonth.month;
+      
+      bool matchDate = true;
+      if (_selectedDateRange != null) {
+        // start is inclusive, end is inclusive up to 23:59:59
+        matchDate = tx.tanggal.isAfter(_selectedDateRange!.start.subtract(const Duration(seconds: 1))) && 
+                    tx.tanggal.isBefore(_selectedDateRange!.end.add(const Duration(days: 1)));
+      }
+
       final matchWallet = _selectedWalletId == null ||
           tx.idDompet == _selectedWalletId ||
           tx.idDompetTujuan == _selectedWalletId;
-      return matchMonth && matchWallet;
+      return matchDate && matchWallet;
     }).toList();
   }
 
-  void _prevMonth() =>
-      setState(() => _selectedMonth =
-          DateTime(_selectedMonth.year, _selectedMonth.month - 1));
-
-  void _nextMonth() {
-    final now = DateTime.now();
-    final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
-    if (!next.isAfter(DateTime(now.year, now.month))) {
-      setState(() => _selectedMonth = next);
+  Future<void> _pickDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: _selectedDateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+                  primary: Theme.of(context).colorScheme.primary,
+                ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _selectedDateRange = DateTimeRange(
+        start: picked.start,
+        end: DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
+      ));
     }
+  }
+
+  void _clearDateRange() {
+    setState(() => _selectedDateRange = null);
   }
 
   Future<void> _deleteTransaction(TransactionModel tx) async {
@@ -286,6 +335,19 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                         // ── Summary cards
                         Row(
                           children: [
+                            Text(
+                              'Ringkasan Periode Ini',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
                             Expanded(
                               child: _SummaryCard(
                                 label: 'Pemasukan',
@@ -308,12 +370,12 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
                         const SizedBox(height: 24),
 
                         // ── Filter bar
-                        _FilterBar(
-                          selectedMonth: _selectedMonth,
+                        FilterBar(
+                          selectedDateRange: _selectedDateRange,
                           selectedWalletId: _selectedWalletId,
                           wallets: wallets,
-                          onPrevMonth: _prevMonth,
-                          onNextMonth: _nextMonth,
+                          onPickDateRange: _pickDateRange,
+                          onClearDateRange: _clearDateRange,
                           onWalletChanged: (id) =>
                               setState(() => _selectedWalletId = id),
                         ),
@@ -389,150 +451,7 @@ class _HomeTabState extends ConsumerState<_HomeTab> {
   }
 }
 
-// ─────────────────────────────────────────────────
-//  FILTER BAR
-// ─────────────────────────────────────────────────
-class _FilterBar extends StatelessWidget {
-  final DateTime selectedMonth;
-  final String? selectedWalletId;
-  final List<WalletModel> wallets;
-  final VoidCallback onPrevMonth;
-  final VoidCallback onNextMonth;
-  final ValueChanged<String?> onWalletChanged;
-
-  const _FilterBar({
-    required this.selectedMonth,
-    required this.selectedWalletId,
-    required this.wallets,
-    required this.onPrevMonth,
-    required this.onNextMonth,
-    required this.onWalletChanged,
-  });
-
-  static const _months = [
-    '', 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    final isCurrentMonth = selectedMonth.year == now.year &&
-        selectedMonth.month == now.month;
-
-    return Column(
-      children: [
-        // Month navigator
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          decoration: BoxDecoration(
-            color: cs.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cs.onSurface.withValues(alpha: 0.08)),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: onPrevMonth,
-                icon: Icon(Icons.chevron_left_rounded,
-                    color: cs.onSurface.withValues(alpha: 0.6)),
-                iconSize: 22,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-              Expanded(
-                child: Text(
-                  '${_months[selectedMonth.month]} ${selectedMonth.year}',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface,
-                  ),
-                ),
-              ),
-              IconButton(
-                onPressed: isCurrentMonth ? null : onNextMonth,
-                icon: Icon(
-                  Icons.chevron_right_rounded,
-                  color: isCurrentMonth
-                      ? cs.onSurface.withValues(alpha: 0.2)
-                      : cs.onSurface.withValues(alpha: 0.6),
-                ),
-                iconSize: 22,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-            ],
-          ),
-        ),
-
-        // Wallet filter chips
-        if (wallets.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _WalletChip(
-                  label: 'Semua',
-                  isSelected: selectedWalletId == null,
-                  onTap: () => onWalletChanged(null),
-                ),
-                ...wallets.map((w) => _WalletChip(
-                      label: w.nama,
-                      isSelected: selectedWalletId == w.id,
-                      onTap: () => onWalletChanged(w.id),
-                    )),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _WalletChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _WalletChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? cs.primary : cs.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? cs.primary : cs.onSurface.withValues(alpha: 0.12),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : cs.onSurface.withValues(alpha: 0.7),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// Removed _FilterBar and _WalletChip to lib/views/widgets/filter_bar.dart
 
 // ─────────────────────────────────────────────────
 //  THEME TOGGLE BUTTON

@@ -19,14 +19,41 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  /// Login sebagai Tamu (Guest Mode)
+  Future<UserCredential> signInAnonymously() async {
+    return await _auth.signInAnonymously();
+  }
+
+  /// Daftar dengan Email & Password
+  Future<UserCredential> signUpWithEmail(String email, String password) async {
+    if (currentUser != null && currentUser!.isAnonymous) {
+      final credential = EmailAuthProvider.credential(email: email, password: password);
+      return await currentUser!.linkWithCredential(credential);
+    }
+    return await _auth.createUserWithEmailAndPassword(email: email, password: password);
+  }
+
+  /// Masuk dengan Email & Password
+  Future<UserCredential> signInWithEmail(String email, String password) async {
+    return await _auth.signInWithEmailAndPassword(email: email, password: password);
+  }
+
+  /// Kirim Email Reset Password
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
   /// Login dengan Google (web: signInWithPopup, Android: credential)
   Future<UserCredential?> signInWithGoogle() async {
     try {
       if (kIsWeb) {
-        // Web: pakai Firebase popup langsung — lebih reliable
+        // Web: pakai Firebase popup langsung
         final provider = GoogleAuthProvider();
         provider.addScope('email');
         provider.addScope('profile');
+        if (currentUser != null && currentUser!.isAnonymous) {
+          return await currentUser!.linkWithPopup(provider);
+        }
         return await _auth.signInWithPopup(provider);
       } else {
         // Android: pakai google_sign_in package
@@ -40,6 +67,10 @@ class AuthService {
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
+        
+        if (currentUser != null && currentUser!.isAnonymous) {
+          return await currentUser!.linkWithCredential(credential);
+        }
         return await _auth.signInWithCredential(credential);
       }
     } catch (e) {

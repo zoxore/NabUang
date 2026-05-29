@@ -315,11 +315,11 @@ class _TransactionFormScreenState extends ConsumerState<TransactionFormScreen>
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Text('Rp ',
+                    const Text('Rp ',
                         style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFFFFB347))),
+                            color: Color(0xFFFFB347))),
                     Expanded(
                       child: TextField(
                         controller: _feeController,
