@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/wallet_model.dart';
 import '../models/transaction_model.dart';
 import '../models/bill_model.dart';
+import '../models/category_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -16,6 +17,9 @@ class FirestoreService {
 
   CollectionReference _bills(String uid) =>
       _db.collection('users').doc(uid).collection('bills');
+
+  CollectionReference _categories(String uid) =>
+      _db.collection('users').doc(uid).collection('categories');
 
   // ─── WALLET STREAMS ────────────────────────────────────────────────────────
 
@@ -47,6 +51,18 @@ class FirestoreService {
         .map((snap) => snap.docs
             .map((doc) =>
                 BillModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // ─── CATEGORY STREAMS ──────────────────────────────────────────────────────
+
+  Stream<List<CategoryModel>> categoriesStream(String uid) {
+    return _categories(uid)
+        .orderBy('nama', descending: false)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((doc) => CategoryModel.fromMap(
+                doc.id, doc.data() as Map<String, dynamic>))
             .toList());
   }
 
@@ -213,6 +229,46 @@ class FirestoreService {
       'id_transaksi': txRef.id,
     });
 
+    await batch.commit();
+  }
+
+  // ─── CATEGORY CRUD ─────────────────────────────────────────────────────────
+
+  Future<void> addCategory(String uid, CategoryModel category) async {
+    await _categories(uid).add(category.toMap());
+  }
+
+  Future<void> updateCategory(String uid, CategoryModel category) async {
+    await _categories(uid).doc(category.id).update(category.toMap());
+  }
+
+  Future<void> deleteCategory(String uid, String categoryId) async {
+    await _categories(uid).doc(categoryId).delete();
+  }
+
+  Future<void> seedDefaultCategories(String uid) async {
+    final batch = _db.batch();
+    
+    final defaults = [
+      // Pengeluaran
+      const CategoryModel(id: '', nama: 'Makan & Minum', tipe: 'Pengeluaran', icon: '🍔'),
+      const CategoryModel(id: '', nama: 'Transport', tipe: 'Pengeluaran', icon: '🚗'),
+      const CategoryModel(id: '', nama: 'Belanja', tipe: 'Pengeluaran', icon: '🛍️'),
+      const CategoryModel(id: '', nama: 'Tagihan', tipe: 'Pengeluaran', icon: '🧾'),
+      const CategoryModel(id: '', nama: 'Hiburan', tipe: 'Pengeluaran', icon: '🎮'),
+      // Pemasukan
+      const CategoryModel(id: '', nama: 'Gaji', tipe: 'Pemasukan', icon: '💼'),
+      const CategoryModel(id: '', nama: 'Freelance', tipe: 'Pemasukan', icon: '💻'),
+      const CategoryModel(id: '', nama: 'Investasi', tipe: 'Pemasukan', icon: '📈'),
+      const CategoryModel(id: '', nama: 'Pemberian', tipe: 'Pemasukan', icon: '🎁'),
+      const CategoryModel(id: '', nama: 'Lainnya', tipe: 'Pemasukan', icon: '💰'),
+    ];
+
+    for (final cat in defaults) {
+      final ref = _categories(uid).doc();
+      batch.set(ref, cat.toMap());
+    }
+    
     await batch.commit();
   }
 }

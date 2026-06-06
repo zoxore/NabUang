@@ -30,7 +30,6 @@ class _TransactionFormScreenState extends ConsumerState<TransactionFormScreen>
   final _feeController = TextEditingController();
 
   bool _isSaving = false;
-  final _categories = CategoryModel.dummyList;
 
   @override
   void initState() {
@@ -535,7 +534,8 @@ class _TransactionFormScreenState extends ConsumerState<TransactionFormScreen>
   }
 
   void _showCategoryPicker() {
-    final filtered = _categories.where((c) => c.tipe == _tipe).toList();
+    final categories = ref.read(categoriesProvider).valueOrNull ?? [];
+    final filtered = categories.where((c) => c.tipe == _tipe).toList();
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,

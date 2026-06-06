@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/wallet_model.dart';
 import '../models/transaction_model.dart';
 import '../models/bill_model.dart';
+import '../models/category_model.dart';
 import '../services/firestore_service.dart';
 
 // ─── FirestoreService instance ────────────────────────────────────────────────
@@ -33,6 +34,13 @@ final billsProvider = StreamProvider<List<BillModel>>((ref) {
   final uid = ref.watch(_uidProvider);
   if (uid.isEmpty) return const Stream.empty();
   return ref.watch(firestoreServiceProvider).billsStream(uid);
+});
+
+// ─── Stream daftar kategori ───────────────────────────────────────────────────
+final categoriesProvider = StreamProvider<List<CategoryModel>>((ref) {
+  final uid = ref.watch(_uidProvider);
+  if (uid.isEmpty) return const Stream.empty();
+  return ref.watch(firestoreServiceProvider).categoriesStream(uid);
 });
 
 // ─── Total saldo semua wallet ─────────────────────────────────────────────────

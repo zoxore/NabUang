@@ -1,4 +1,4 @@
-package com.nabuang.nabuang
+package com.nabuang.nabung
 
 import io.flutter.embedding.android.FlutterActivity
 

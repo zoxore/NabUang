@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/category_model.dart';
+import '../../providers/firestore_provider.dart';
 
-class CategoriesScreen extends StatefulWidget {
+class CategoriesScreen extends ConsumerStatefulWidget {
   const CategoriesScreen({super.key});
 
   @override
-  State<CategoriesScreen> createState() => _CategoriesScreenState();
+  ConsumerState<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-class _CategoriesScreenState extends State<CategoriesScreen>
+class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -28,10 +31,8 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
-    final pengeluaran =
-        CategoryModel.dummyList.where((c) => c.tipe == 'Pengeluaran').toList();
-    final pemasukan =
-        CategoryModel.dummyList.where((c) => c.tipe == 'Pemasukan').toList();
+    
+    final categoriesAsync = ref.watch(categoriesProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -61,7 +62,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => _showAddCategorySheet(context),
+                    onTap: () => _showCategorySheet(context, null),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 7),
@@ -123,12 +124,21 @@ class _CategoriesScreenState extends State<CategoriesScreen>
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildList(context, pengeluaran, const Color(0xFFFF6B6B)),
-                  _buildList(context, pemasukan, const Color(0xFF00C896)),
-                ],
+              child: categoriesAsync.when(
+                data: (categories) {
+                  final pengeluaran = categories.where((c) => c.tipe == 'Pengeluaran').toList();
+                  final pemasukan = categories.where((c) => c.tipe == 'Pemasukan').toList();
+                  
+                  return TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildList(context, pengeluaran, const Color(0xFFFF6B6B)),
+                      _buildList(context, pemasukan, const Color(0xFF00C896)),
+                    ],
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, stack) => Center(child: Text('Error: $err')),
               ),
             ),
           ],
@@ -141,6 +151,20 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       BuildContext context, List<CategoryModel> categories, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cs = Theme.of(context).colorScheme;
+
+    if (categories.isEmpty) {
+      // Auto-seed default categories if empty
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) {
+          ref.read(firestoreServiceProvider).seedDefaultCategories(uid);
+        }
+      });
+      
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
 
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
@@ -195,10 +219,14 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               Row(
                 children: [
                   _actionBtn(context, Icons.edit_outlined,
-                      cs.onSurface.withValues(alpha: 0.4), () {}),
+                      cs.onSurface.withValues(alpha: 0.4), () {
+                    _showCategorySheet(context, cat);
+                  }),
                   const SizedBox(width: 6),
                   _actionBtn(context, Icons.delete_outline_rounded,
-                      const Color(0xFFFF6B6B), () {}),
+                      const Color(0xFFFF6B6B), () {
+                    _deleteCategory(cat);
+                  }),
                 ],
               ),
             ],
@@ -223,7 +251,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     );
   }
 
-  void _showAddCategorySheet(BuildContext context) {
+  void _showCategorySheet(BuildContext context, CategoryModel? category) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -231,22 +259,53 @@ class _CategoriesScreenState extends State<CategoriesScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (_) => const _CategoryFormSheet(),
+      builder: (_) => _CategoryFormSheet(category: category),
     );
+  }
+  
+  void _deleteCategory(CategoryModel category) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Kategori?'),
+        content: Text('Apakah Anda yakin ingin menghapus kategori ${category.nama}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        await ref.read(firestoreServiceProvider).deleteCategory(uid, category.id);
+      }
+    }
   }
 }
 
-class _CategoryFormSheet extends StatefulWidget {
-  const _CategoryFormSheet();
+class _CategoryFormSheet extends ConsumerStatefulWidget {
+  final CategoryModel? category;
+  
+  const _CategoryFormSheet({this.category});
 
   @override
-  State<_CategoryFormSheet> createState() => _CategoryFormSheetState();
+  ConsumerState<_CategoryFormSheet> createState() => _CategoryFormSheetState();
 }
 
-class _CategoryFormSheetState extends State<_CategoryFormSheet> {
+class _CategoryFormSheetState extends ConsumerState<_CategoryFormSheet> {
   final _namaCtrl = TextEditingController();
   String _tipe = 'Pengeluaran';
   String _selectedIcon = '📦';
+  bool _isLoading = false;
 
   final List<String> _icons = [
     '🍔', '🚗', '🛍️', '🎮', '💊', '🧾', '🏠', '📚',
@@ -255,9 +314,55 @@ class _CategoryFormSheetState extends State<_CategoryFormSheet> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.category != null) {
+      _namaCtrl.text = widget.category!.nama;
+      _tipe = widget.category!.tipe;
+      _selectedIcon = widget.category!.icon;
+    }
+  }
+
+  @override
   void dispose() {
     _namaCtrl.dispose();
     super.dispose();
+  }
+  
+  Future<void> _saveCategory() async {
+    final nama = _namaCtrl.text.trim();
+    if (nama.isEmpty) return;
+    
+    setState(() => _isLoading = true);
+    
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final fs = ref.read(firestoreServiceProvider);
+      
+      final category = CategoryModel(
+        id: widget.category?.id ?? '',
+        nama: nama,
+        tipe: _tipe,
+        icon: _selectedIcon,
+      );
+      
+      try {
+        if (widget.category == null) {
+          await fs.addCategory(uid, category);
+        } else {
+          await fs.updateCategory(uid, category);
+        }
+        if (mounted) Navigator.pop(context);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Gagal menyimpan kategori: $e')),
+          );
+        }
+      }
+    }
+    
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
@@ -286,7 +391,7 @@ class _CategoryFormSheetState extends State<_CategoryFormSheet> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Tambah Kategori',
+          Text(widget.category == null ? 'Tambah Kategori' : 'Edit Kategori',
               style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -368,8 +473,10 @@ class _CategoryFormSheetState extends State<_CategoryFormSheet> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Simpan Kategori'),
+              onPressed: _isLoading ? null : _saveCategory,
+              child: _isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Simpan Kategori'),
             ),
           ),
         ],

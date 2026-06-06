@@ -47,6 +47,10 @@ class _WalletSetupScreenState extends ConsumerState<WalletSetupScreen> {
           WalletModel(id: '', nama: nama, jenis: entry.jenis, saldo: saldo),
         );
       }
+      
+      // Seed kategori default saat pertama kali setup
+      await service.seedDefaultCategories(uid);
+      
       // Setelah simpan → langsung ke dashboard
       if (mounted) context.go('/dashboard');
     } catch (e) {
