@@ -247,6 +247,10 @@ class FirestoreService {
   }
 
   Future<void> seedDefaultCategories(String uid) async {
+    // Cek apakah kategori sudah pernah di-seed (mencegah duplikasi)
+    final snap = await _categories(uid).limit(1).get();
+    if (snap.docs.isNotEmpty) return;
+
     final batch = _db.batch();
     
     final defaults = [

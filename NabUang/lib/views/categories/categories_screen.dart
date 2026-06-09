@@ -153,16 +153,16 @@ class _CategoriesScreenState extends ConsumerState<CategoriesScreen>
     final cs = Theme.of(context).colorScheme;
 
     if (categories.isEmpty) {
-      // Auto-seed default categories if empty
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid != null) {
-          ref.read(firestoreServiceProvider).seedDefaultCategories(uid);
-        }
-      });
-      
-      return const Center(
-        child: CircularProgressIndicator(),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.category_outlined, size: 48, color: cs.onSurface.withValues(alpha: 0.2)),
+            const SizedBox(height: 16),
+            Text('Belum ada kategori', 
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.5))),
+          ],
+        ),
       );
     }
 
