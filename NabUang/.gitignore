@@ -43,3 +43,19 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local configuration
+local.properties
+android/local.properties
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Android signing keys
+*.jks
+*.keystore
+
+# Gradle
+.gradle/
